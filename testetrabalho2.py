@@ -17,23 +17,26 @@ from imblearn.over_sampling import SMOTE
 pd.set_option('future.no_silent_downcasting', True)
 
 
-def outiline(x):
-    for column in x.columns:
-        Q1 = df[column].quantile(0.25)
-        Q3 = df[column].quantile(0.75)
-        IQR = Q3 - Q1
+def outiline(df):
+    # Loop through each column in the DataFrame
+    total = 0
+    for column in df.columns:
+        # Check if the column is numeric
+        if pd.api.types.is_numeric_dtype(df[column]):
+            Q1 = df[column].quantile(0.25)
+            Q3 = df[column].quantile(0.75)
+            IQR = Q3 - Q1
 
-        limite_inferior = Q1 - 1.5 * IQR
-        limite_superior = Q3 + 1.5 * IQR
+            limite_inferior = Q1 - 1.5 * IQR
+            limite_superior = Q3 + 1.5 * IQR
+            outliers = df[(df[column] < limite_inferior) | (df[column] > limite_superior)][column]
+            p10 = df[column].quantile(0.10)
+            p90 = df[column].quantile(0.90)
+            df[column] = df[column].apply(lambda x: p10 if x < limite_inferior else (p90 if x > limite_superior else x))
+            total += len(outliers.tolist())
+    print(total)
+    return df
 
-        outliers = df[(df[column] < limite_inferior) |
-                            (df[column] > limite_superior)][column]
-        print("Quartil 1 (Q1):", Q1)
-        print("Quartil 3 (Q3):", Q3)
-        print("Diferença Interquartil (IQR):", IQR)  #ou posso simplesmente usar print(outliers)
-        print("Limite Inferior:", limite_inferior)   #que no caso vai me dar o valor outliers: 107 5.0
-        print("Limite Superior:", limite_superior)
-        print("Outliers:", outliers)
 
 # Função para avaliar e plotar a matriz de confusão
 def evaluate_model(model, X_train, X_test, y_train, y_test, model_name, show_data):
@@ -63,10 +66,12 @@ def evaluate_model(model, X_train, X_test, y_train, y_test, model_name, show_dat
 
     return [accuracy, roc_auc, precision, recall, f1]
 
-def execute_parameters(na_solution, smote, tt_split, k_for_cleaning,
-                        clean_data_correlation, dstree, nodes_for_tree, random_frst, kapann, k_for_knn, graphs, shwdata):
+def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
+                        clean_data_correlation, dstree, nodes_for_tree, random_frst, kapann, k_for_knn, graphs, shwdata, seed):
     # Carregar e preparar os dados
     df = read_csv("hcc_dataset.csv", sep=",", na_values='?')
+    if outliner == 1:
+        df = outiline(df)
     if na_solution == 'median':
         numerical_attributes = df.select_dtypes(include=['int64', 'float64'])
         numerical_attributes.fillna(numerical_attributes.median(), inplace=True)
@@ -81,6 +86,7 @@ def execute_parameters(na_solution, smote, tt_split, k_for_cleaning,
             df[column] = numerical_attributes[column]
     df.fillna(df.mode().iloc[0], inplace=True)
     df.replace('?', df.mode().iloc[0], inplace=True)
+    
     df.replace('Yes', 1, inplace=True)
     df.replace('No', 0, inplace=True)
     
@@ -95,8 +101,10 @@ def execute_parameters(na_solution, smote, tt_split, k_for_cleaning,
     cx = scaler.fit_transform(x)
     x = pd.DataFrame(cx, columns=x.columns)
     y = df[["Class",]]
+    
+    
     if smote == 1:
-        smote = SMOTE(random_state=42)
+        smote = SMOTE(random_state=seed)
         x, y = smote.fit_resample(x, y)
         #value_counts = df['Class'].value_counts() #debuggin data for smote
 
@@ -151,12 +159,12 @@ def execute_parameters(na_solution, smote, tt_split, k_for_cleaning,
 
     y = y.values.ravel()
     # Dividir os dados em conjuntos de treinamento e teste
-    X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=tt_split, random_state=random.randint(0,1000), stratify=y)
+    X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=tt_split, random_state=seed, stratify=y)
 
     tresults = []
     if dstree == 1:
         # Árvore de decisão
-        arv = tree.DecisionTreeClassifier(max_leaf_nodes=nodes_for_tree, criterion="gini", random_state=random.randint(0,100))
+        arv = tree.DecisionTreeClassifier(max_leaf_nodes=nodes_for_tree, criterion="gini", random_state=seed)
         tresults.append(evaluate_model(arv, X_train, X_test, y_train, y_test, "Decision Tree",shwdata))
         if shwdata == 1:
             plt.figure(figsize=(8,8))
@@ -170,7 +178,7 @@ def execute_parameters(na_solution, smote, tt_split, k_for_cleaning,
 
     if random_frst == 1:
     # Random Forest
-        rf = RandomForestClassifier(n_estimators=1000, random_state=random.randint(0,1000))
+        rf = RandomForestClassifier(n_estimators=1000, random_state=seed)
         tresults.append(evaluate_model(rf, X_train, X_test, y_train, y_test, "Random Forest",shwdata))
     
     return tresults
@@ -185,7 +193,7 @@ def render(results, parameter, ax):
     melted_df = results_df.reset_index().melt(id_vars='index', var_name='Metric', value_name='Value')
     melted_df.rename(columns={'index': 'Algorithm'}, inplace=True)
     # Plot the combined bar plot
-    sns.barplot(data=melted_df, x='Metric', y='Value', hue='Algorithm', palette='Set3', ax=ax)
+    sns.barplot(data=melted_df, x='Metric', y='Value', hue='Algorithm', palette='Set1', ax=ax)
     ax.set_title(f"Parameters: {parameter}")
     ax.set_ylabel('Score')
     ax.set_xlabel('Metric')
@@ -196,31 +204,29 @@ def render(results, parameter, ax):
                    ha = 'center', va = 'center', 
                    xytext = (0, 0),  
                    textcoords = 'offset points')
-# Generate results with different parameters
-fig, axs = plt.subplots(3, 1, figsize=(10, 10))
 
 
-def main(graphrender):
-    #execute_parameters parameter list:(na_solution: tipo de substituição para na, smote: balanceamento de classes, 
+
+def main(graphrender): 
+    # Generate results with different parameters
+    
+    #execute_parameters parameter list:(na_solution: tipo de substituição para na, smote: balanceamento de classes, outiliner:detector de outliars
     #tt_split: valor de train test split, k_for_cleaning numero de atributos mais correlacionados a "class" a serem mantidos,
     #clean_data_correlation: habilita a limpeza de data por correlação, dstree: habiliota arvore de procura, 
     #nodes_for_tree:max nodulos p arvore, random_frst: habilita random foresr, kapann,: habilita knn k_for_knn: valor de k para knn,
-    # graphs:show graphs, shwdata:prints some data):
-    results = execute_parameters('mode', 1, 0.3, 15, True, 1, 3, 1, 1, 3, 0, 0)
+    # graphs:show graphs, shwdata:prints some data, seed:the seed used for random numbers):
+    results = execute_parameters('mean', 1,1, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123)
     if graphrender == 1:
-        parameter = ['mode', 1, 0.3, 15, True, 1, 3, 1, 1, 3, 0, 0]
-        render(results, parameter, axs[0])
-
-    results = execute_parameters('mean', 1, 0.3, 15, True, 1, 3, 1, 1, 3, 0, 0)
+        results0=results
+        parameter0 = ['mean', 1,1, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123]
+    results = execute_parameters('median', 1,0, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123)    
     if graphrender == 1:
-        parameter = ['mean', 1, 0.3, 15, True, 1, 3, 1, 1, 3, 0, 0]
-        render(results, parameter, axs[1])
-
-    results = execute_parameters('median', 1, 0.3, 15, True, 1, 3, 1, 1, 3, 0, 0)
+        results1 =results
+        parameter1 = ['median', 1,0, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123]
     if graphrender == 1:
-        parameter = ['median', 1, 0.3, 15, True, 1, 3, 1, 1, 3, 0, 0]
-        render(results, parameter, axs[2])
-    if graphrender == 1:
+        fig, axs = plt.subplots(3, 1, figsize=(10, 10))
+        render(results0, parameter0, axs[0])
+        render(results1, parameter1, axs[1])
         plt.tight_layout()
         plt.show()
 
