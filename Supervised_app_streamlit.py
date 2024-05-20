@@ -238,12 +238,6 @@ def principal():
         if st.button("Avaliar Modelo"):
             evaluate_model(model, X_train, X_test, y_train, y_test, model_name, show_data)
 
-        feedback = st.text_input("Deixe seu feedback aqui:")
-        if feedback:
-            st.write("Feedback recebido. Obrigado!")
-            st.write("## Feedbacks dos Usuários")
-            st.write("Em breve, esta seção exibirá os feedbacks dos usuários.")
-
 # About page content
 def show_about_page():
     st.title("Sobre o Aplicativo")
