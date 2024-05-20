@@ -173,7 +173,7 @@ def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
 
     if kapann == 1:
         # KNN com k visinhos    
-        knn = KNeighborsClassifier(n_neighbors=k_for_knn)
+        knn = KNeighborsClassifier(n_neighbors=k_for_knn, weights='distance')
         tresults.append(evaluate_model(knn, X_train, X_test, y_train, y_test, "KNN",shwdata))
 
     if random_frst == 1:
