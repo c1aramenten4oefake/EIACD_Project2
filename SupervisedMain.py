@@ -13,20 +13,27 @@ from sklearn.feature_selection import SelectKBest, f_classif
 import sklearn.tree as tree
 from imblearn.over_sampling import SMOTE
 
-
+# Configuração do pandas para desativar avisos de casting silencioso no futuro
 pd.set_option('future.no_silent_downcasting', True)
 
-
 def outiline(df):
-    # Loop through each column in the DataFrame
+    """
+    Função para detectar e substituir outliers em um DataFrame.
+    
+    Parâmetros:
+    df (DataFrame): DataFrame a ser processado.
+    
+    Retorna:
+    DataFrame: DataFrame com outliers substituídos pelos percentis 10 e 90.
+    """
     total = 0
+    # Loop através de cada coluna do DataFrame
     for column in df.columns:
-        # Check if the column is numeric
+        # Verifica se a coluna é numérica
         if pd.api.types.is_numeric_dtype(df[column]):
             Q1 = df[column].quantile(0.25)
             Q3 = df[column].quantile(0.75)
             IQR = Q3 - Q1
-
             limite_inferior = Q1 - 1.5 * IQR
             limite_superior = Q3 + 1.5 * IQR
             outliers = df[(df[column] < limite_inferior) | (df[column] > limite_superior)][column]
@@ -37,9 +44,22 @@ def outiline(df):
     print(total)
     return df
 
-
-# Função para avaliar e plotar a matriz de confusão
 def evaluate_model(model, X_train, X_test, y_train, y_test, model_name, show_data):
+    """
+    Função para avaliar um modelo de machine learning e exibir a matriz de confusão.
+    
+    Parâmetros:
+    model (sklearn model): Modelo a ser avaliado.
+    X_train (DataFrame): Conjunto de treinamento.
+    X_test (DataFrame): Conjunto de teste.
+    y_train (Series): Labels do conjunto de treinamento.
+    y_test (Series): Labels do conjunto de teste.
+    model_name (str): Nome do modelo.
+    show_data (int): Flag para exibir métricas e matriz de confusão.
+    
+    Retorna:
+    list: Lista contendo métricas de avaliação (accuracy, roc_auc, precision, recall, f1).
+    """
     model.fit(X_train, y_train)
     prediction = model.predict(X_test)
     accuracy = accuracy_score(y_test, prediction)
@@ -68,6 +88,28 @@ def evaluate_model(model, X_train, X_test, y_train, y_test, model_name, show_dat
 
 def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
                         clean_data_correlation, dstree, nodes_for_tree, random_frst, kapann, k_for_knn, graphs, shwdata, seed):
+    """
+    Função para executar várias configurações de parâmetros no modelo e avaliar o desempenho.
+    
+    Parâmetros:
+    na_solution (str): Método de substituição de valores ausentes ('median' ou 'mean').
+    smote (int): Flag para aplicar SMOTE para balanceamento de classes.
+    outliner (int): Flag para detectar e substituir outliers.
+    tt_split (float): Proporção de divisão entre treino e teste.
+    k_for_cleaning (int): Número de atributos mais correlacionados a serem mantidos.
+    clean_data_correlation (bool): Flag para limpar dados com base em correlação.
+    dstree (int): Flag para habilitar o uso de árvore de decisão.
+    nodes_for_tree (int): Número máximo de nós na árvore de decisão.
+    random_frst (int): Flag para habilitar o uso de Random Forest.
+    kapann (int): Flag para habilitar o uso de KNN.
+    k_for_knn (int): Número de vizinhos para KNN.
+    graphs (int): Flag para exibir gráficos.
+    shwdata (int): Flag para exibir dados de avaliação.
+    seed (int): Semente para geração de números aleatórios.
+    
+    Retorna:
+    list: Lista de resultados das avaliações dos modelos.
+    """
     # Carregar e preparar os dados
     df = read_csv("hcc_dataset.csv", sep=",", na_values='?')
     if outliner == 1:
@@ -80,17 +122,17 @@ def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
             df[column] = numerical_attributes[column]
     elif na_solution == 'mean':
         numerical_attributes = df.select_dtypes(include=['int64', 'float64'])
-        numerical_attributes.fillna(numerical_attributes.median(), inplace=True)
-        numerical_attributes.replace('?', numerical_attributes.median(), inplace=True)
+        numerical_attributes.fillna(numerical_attributes.mean(), inplace=True)
+        numerical_attributes.replace('?', numerical_attributes.mean(), inplace=True)
         for column in numerical_attributes.columns:
             df[column] = numerical_attributes[column]
     df.fillna(df.mode().iloc[0], inplace=True)
     df.replace('?', df.mode().iloc[0], inplace=True)
     
+    # Substituir valores de string por valores numéricos
     df.replace('Yes', 1, inplace=True)
     df.replace('No', 0, inplace=True)
     
-
     x = df
     if "Class" in x.columns:
         x = x.drop(columns=["Class"])
@@ -102,17 +144,16 @@ def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
     x = pd.DataFrame(cx, columns=x.columns)
     y = df[["Class",]]
     
-    
     if smote == 1:
         smote = SMOTE(random_state=seed)
         x, y = smote.fit_resample(x, y)
-        #value_counts = df['Class'].value_counts() #debuggin data for smote
 
-    # 
+    # Plotar a correlação dos atributos
     if graphs == 1:
         plt.figure(figsize=(15,10))
         sns.heatmap(x.corr(), annot=False, square=True, cmap='coolwarm')
         plt.show()
+    
     if clean_data_correlation == True:
         selector = SelectKBest(score_func=f_classif, k=k_for_cleaning)  
         x_new = selector.fit_transform(x, y.values.ravel())
@@ -129,15 +170,11 @@ def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
         x = x.drop(columns='Class')
         corr_matrix = x.corr()
         upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-        # Find columns with correlation greater than a threshold (e.g., 0.95)
         threshold = 0.81
         to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
-        # Drop highly correlated columns
         x = x.drop(columns=to_drop)
-        #for negative correlation
         threshold = -0.81
         to_drop = [column for column in upper.columns if any(upper[column] < threshold)]
-        # Drop highly correlated columns
         x = x.drop(columns=to_drop)
         x = pd.concat([x, y], axis=1)
         x.replace('Lives', 1, inplace=True)
@@ -154,9 +191,6 @@ def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
                 plt.show()
         x = x.drop(columns='Class')
 
-
-
-
     y = y.values.ravel()
     # Dividir os dados em conjuntos de treinamento e teste
     X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=tt_split, random_state=seed, stratify=y)
@@ -165,34 +199,38 @@ def execute_parameters(na_solution, smote, outliner, tt_split, k_for_cleaning,
     if dstree == 1:
         # Árvore de decisão
         arv = tree.DecisionTreeClassifier(max_leaf_nodes=nodes_for_tree, criterion="gini", random_state=seed)
-        tresults.append(evaluate_model(arv, X_train, X_test, y_train, y_test, "Decision Tree",shwdata))
+        tresults.append(evaluate_model(arv, X_train, X_test, y_train, y_test, "Decision Tree", shwdata))
         if shwdata == 1:
             plt.figure(figsize=(8,8))
             tree.plot_tree(arv, feature_names=x.columns.tolist(), class_names=["lives", "dies"], filled=True)
             plt.show()
 
     if kapann == 1:
-        # KNN com k visinhos    
+        # KNN com k vizinhos
         knn = KNeighborsClassifier(n_neighbors=k_for_knn, weights='distance')
-        tresults.append(evaluate_model(knn, X_train, X_test, y_train, y_test, "KNN",shwdata))
+        tresults.append(evaluate_model(knn, X_train, X_test, y_train, y_test, "KNN", shwdata))
 
     if random_frst == 1:
-    # Random Forest
+        # Random Forest
         rf = RandomForestClassifier(n_estimators=1000, random_state=seed)
-        tresults.append(evaluate_model(rf, X_train, X_test, y_train, y_test, "Random Forest",shwdata))
+        tresults.append(evaluate_model(rf, X_train, X_test, y_train, y_test, "Random Forest", shwdata))
     
     return tresults
 
-    
-
-
 def render(results, parameter, ax):
+    """
+    Função para renderizar gráficos dos resultados das avaliações dos modelos.
+    
+    Parâmetros:
+    results (list): Lista de resultados das avaliações dos modelos.
+    parameter (list): Lista de parâmetros utilizados.
+    ax (matplotlib Axes): Objeto Axes para plotar o gráfico.
+    """
     metrics = ['Accuracy', 'ROC AUC', 'Precision', 'Recall', 'F1 Score']
     algorithms = ['DecisionTree', 'Knn', 'Forest']
     results_df = pd.DataFrame(results, columns=metrics, index=algorithms)
     melted_df = results_df.reset_index().melt(id_vars='index', var_name='Metric', value_name='Value')
     melted_df.rename(columns={'index': 'Algorithm'}, inplace=True)
-    # Plot the combined bar plot
     sns.barplot(data=melted_df, x='Metric', y='Value', hue='Algorithm', palette='Set1', ax=ax)
     ax.set_title(f"Parameters: {parameter}")
     ax.set_ylabel('Score')
@@ -205,24 +243,21 @@ def render(results, parameter, ax):
                    xytext = (0, 0),  
                    textcoords = 'offset points')
 
-
-
 def main(graphrender): 
-    # Generate results with different parameters
+    """
+    Função principal para executar os parâmetros e renderizar os gráficos.
     
-    #execute_parameters parameter list:(na_solution: tipo de substituição para na, smote: balanceamento de classes, outiliner:detector de outliars
-    #tt_split: valor de train test split, k_for_cleaning numero de atributos mais correlacionados a "class" a serem mantidos,
-    #clean_data_correlation: habilita a limpeza de data por correlação, dstree: habiliota arvore de procura, 
-    #nodes_for_tree:max nodulos p arvore, random_frst: habilita random foresr, kapann,: habilita knn k_for_knn: valor de k para knn,
-    # graphs:show graphs, shwdata:prints some data, seed:the seed used for random numbers):
-    results = execute_parameters('mean', 1,1, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123)
+    Parâmetros:
+    graphrender (int): Flag para habilitar gráficos para comparação entre algoritmos e parâmetros.
+    """
+    results = execute_parameters('mean', 1, 1, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1, 123)
     if graphrender == 1:
-        results0=results
-        parameter0 = ['mean', 1,1, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123]
-    results = execute_parameters('median', 1,0, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123)    
+        results0 = results
+        parameter0 = ['mean', 1, 1, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1, 123]
+    results = execute_parameters('median', 1, 0, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1, 123)    
     if graphrender == 1:
-        results1 =results
-        parameter1 = ['median', 1,0, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1,123]
+        results1 = results
+        parameter1 = ['median', 1, 0, 0.3, 15, True, 1, 3, 1, 1, 3, 1, 1, 123]
     if graphrender == 1:
         fig, axs = plt.subplots(3, 1, figsize=(10, 10))
         render(results0, parameter0, axs[0])
@@ -230,6 +265,6 @@ def main(graphrender):
         plt.tight_layout()
         plt.show()
 
-
-#graphrender = 1 habilita os graficos para comparação entre algoritimos e parametros
+# graphrender = 1 habilita os gráficos para comparação entre algoritmos e parâmetros
 main(graphrender=1)
+
