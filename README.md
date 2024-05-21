@@ -4,7 +4,8 @@ by Pedro Paulo Rosa Prado Basilio, Adelino Quaresma Moniz da Vera Cruz, Pedro An
 
 Como Executar
 Certifique-se de ter o arquivo hcc_dataset.csv no mesmo diretório que o script Python.
-E execute $python3 SupervisedMain.py no terminal.
+E execute $'python3 SupervisedMain.py' no terminal.
+Pare executar o arquivo streamlit utilize o seguinte comando  'streamlit run Supervised_app_streamlit.py' e então conecte-se ao servidor local.
 
 A função execute_parameters aceita os seguintes parâmetros:
 
